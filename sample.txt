@@ -1,0 +1,9 @@
+This is a sample text file
+This file is to be used for Python Open Labs 11
+I hope you practised and learned well in the previous sessions
+But as is human nature, out of sight is out of mind
+I hope you have been practising your python
+Lets put your programming to test today
+There are no full stops in this file, because this class is about learning and learning never stops just like my cheesy lame lines
+Thanks for your patience
+This is an update on gist for testing embedding.
