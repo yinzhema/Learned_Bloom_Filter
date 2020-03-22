@@ -3,6 +3,8 @@ import mmh3
 
 import numpy as np
 
+import Helper
+
 """Bloom Filter Class"""
 class Bloom_Filter:
     """Inititalization function that takes in the false positive rate
@@ -51,32 +53,12 @@ class Bloom_Filter:
 
         return found
 
-"""Bloom Filters' helper class: get number of element to be input and a list of all the lines"""
-class BF_Helper:
-
-    """Initialization"""
-    def __init__(self):
-        self.title=''
-        self.word_count=0
-        self.words=[]
-
-    """Read the input text, set the title, calculate the word counts, and store the list of all lines """
-    def read_txt(self, title):
-        wordCount=0
-        file=open(title,"r")
-        for line in file:
-            wordCount+=len(line.split())
-            self.words.append(line)
-        self.word_count=wordCount
-        self.title=title
 
 """TESTING"""
-bf_helper=BF_Helper()
-bf_helper.read_txt('sample.txt')
-bf_test=Bloom_Filter(0.05,bf_helper.word_count)
+helper=Helper.Helpers()
+helper.read_txt('sample.txt')
+bf_test=Bloom_Filter(0.05,helper.word_count)
 
-for line in bf_helper.words:
-    print(line)
+for line in helper.words:
     for word in line.split():
-        print(word)
         bf_test.insert(word)
