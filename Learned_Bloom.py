@@ -1,4 +1,5 @@
 import numpy as np
+import Bloom_filters as BF
 
 """DATA PREPARATION"""
 
@@ -67,3 +68,16 @@ all_neg_email=np.array(neg_email[250:2250])
 all_neg_url=np.array(neg_url[0:2000])
 
 """END OF DATA PREPARATION"""
+
+
+"""INITIAL BF"""
+initial_bf=BF.Bloom_Filter(0.20,3500)
+for i in range(1000):
+    initial_bf.insert(str(all_pos_url[i]))
+for i in range(500):
+    initial_bf.insert(str(false_pos_url[i]))
+#initial test shows 24% false positive rate
+
+"""ML CLASSIFIER"""
+
+"""BACK UP BF"""
