@@ -1,5 +1,9 @@
+"""This learned bloom filter is mainly for testing the relationship between
+% of memory each filter occupied vs. the general error rate
+"""
+
 import numpy as np
-import Bloom_filters as BF
+import Bloom_filters_test as BF
 from sklearn.naive_bayes import GaussianNB
 import matplotlib.pyplot as plt
 """DATA PREPARATION"""
@@ -70,10 +74,10 @@ all_url=np.concatenate((all_pos_url,all_neg_url),axis=0)
 
 """END OF DATA PREPARATION"""
 
-def learned_filter():
+def learned_filter(pct):
     """CONSTRUCTING LEARNED BLOOM FILTER"""
     """INITIAL BF"""
-    initial_bf=BF.Bloom_Filter(0.20,1500)
+    initial_bf=BF.Bloom_Filter(pct,30000,1500)
     for i in range(1500):
         initial_bf.insert(str(all_pos_url[i]))
 
@@ -86,7 +90,7 @@ def learned_filter():
     nb_classifier.fit(all_email[:,0:-1],all_email[:,-1])
 
     """BACK UP BF"""
-    backup_bf=BF.Bloom_Filter(0.05,1500)
+    backup_bf=BF.Bloom_Filter(1-pct,30000,1500)
     for i in range(1500):
         backup_bf.insert(str(all_pos_url[i]))
 
@@ -105,10 +109,15 @@ def learned_filter():
 
     return error_rt
 
+result_array=[]
+for i in np.arange(0.1,0.9,0.01):
+    temp=[]
+    for n in range(10):
+        temp.append(learned_filter(i))
+    result_array.append(np.average(np.array(temp)))
 
-print(' The input data set has 3500 instances in total, with 2000 benign/non-spam instances and 1500 spam/malicious data\n',
-    'Initial Filter returns',len(round1_pos),'positives with',len(round1_pos)-1500,' false positives reported and discards', 3500-len(round1_pos),'negatives.\n',
-    'The classifier takes in',len(round1_pos),'input email data instances and predicts that',int(sum(classifier_result)),'are spam email and',len(classifier_result)-int(sum(classifier_result)),'are non-spam email.\n',
-    'The Backup Filter takes in',len(classifier_email[classifier_result==0]),'input email data instances. It predicts that',sum(backupBF_result),'instances are spam email and',len(classifier_email[classifier_result==0])-sum(backupBF_result),'are non-spam emails.\n',
-    'Thus, as a conclusion:\n',
-    'The Learned Filter predicted that there are',(3500-len(round1_pos))+(len(backupBF_result)-sum(backupBF_result)),'benign data instances and',int(sum(classifier_result))+sum(backupBF_result),'spam/malicioous data instances.')
+plt.scatter(np.arange(0.1,0.9,0.01),result_array)
+plt.xlabel('% of Memory for Initial BF')
+plt.ylabel('Error Rate')
+plt.title('% of Memory for Initial BF from 0.1 to 0.9 with Interval of 0.01')
+plt.show()
