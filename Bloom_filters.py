@@ -21,7 +21,7 @@ class Bloom_Filter:
         self.array=np.zeros(self.array_size,dtype=int)
 
         """calculate the optimal number of hash functions needed"""
-        self.hash_num=int((self.array_size/self.length)*np.log(2))
+        self.hash_num=int(round((self.array_size/self.length)*np.log(2)))
 
     """Insertion method"""
     def insert(self,item):
@@ -40,24 +40,27 @@ class Bloom_Filter:
     def search(self,item):
 
         """Variable to indicate if the item is in the array"""
-        found=False
+        found=0
 
         for i in range(self.hash_num):
             index=mmh3.hash(item,i)%(self.array_size)
 
             """If all the indices is already 1, then found=True"""
             if self.array[index]==1:
-                found=True
+                found=found+1
             else:
-                found=False
+                None
 
-        return found
+        return found==self.hash_num
 
 
 """TESTING"""
 helper=Helper.Helpers()
 helper.read_txt('sample.txt')
 bf_test=Bloom_Filter(0.05,helper.word_count)
+
+bf_test=Bloom_Filter(0.2,1500)
+bf_test.array_size
 
 for line in helper.words:
     for word in line.split():
