@@ -19,14 +19,14 @@ class Bloom_Filter:
 
         self.length=count
 
-        """Calculate false positive rate"""
-        self.false_pos=math.exp((-self.array_size*(np.log(2)**2))/self.length)
-
         """Initiate a numpy array with zeros"""
         self.array=np.zeros(self.array_size,dtype=int)
 
         """calculate the optimal number of hash functions needed"""
         self.hash_num=int(round((self.array_size/self.length)*np.log(2)))
+
+        """Calculate false positive rate"""
+        self.false_pos=(1-math.exp((-self.hash_num*self.length)/self.array_size))**self.hash_num
 
     """Insertion method"""
     def insert(self,item):
@@ -59,7 +59,7 @@ class Bloom_Filter:
         return found==self.hash_num
 
 
-bf_test=Bloom_Filter(0.8,30000,1500)
+bf_test=Bloom_Filter(1,12000,1500)
 bf_test.false_pos
 bf_test.array_size
 bf_test.hash_num
