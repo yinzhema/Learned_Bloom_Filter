@@ -63,3 +63,5 @@ bf_test=Bloom_Filter(1,12000,1500)
 bf_test.false_pos
 bf_test.array_size
 bf_test.hash_num
+
+
