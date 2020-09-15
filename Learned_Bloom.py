@@ -1,7 +1,14 @@
+"""This learned bloom filter is mainly for testing the relationship between
+% of memory each filter occupied vs. the general error rate
+"""
 import numpy as np
-import Bloom_filters as BF
-from sklearn.naive_bayes import GaussianNB
+import Bloom_filters_Modified as BF
+from sklearn.naive_bayes import MultinomialNB
 import matplotlib.pyplot as plt
+import pandas as pd
+import multiprocessing
+import tqdm
+import itertools
 """DATA PREPARATION"""
 
 """Prepare the Spam Email Data"""
@@ -11,17 +18,14 @@ spam_list=[]
 """read the data file and store them in spam_list"""
 spam_data=open('spambase.data','r')
 for line in spam_data:
-    spam_list.append(line.split(','))
+    newline=[]
+    for element in line.split(','):
+        newline.append(float(element))
+    spam_list.append(newline)
 
-"""Seperate the spam_list dataset to spam email and non-spam email(neg_email) """
-spam_email=[]
-neg_email=[]
+spam_df=pd.DataFrame(np.array(spam_list),columns=np.arange(len(spam_list[0])))
 
-for i in range(len(spam_list)):
-    if spam_list[i][-1]=='1\n':
-        spam_email.append(spam_list[i])
-    else:
-        neg_email.append(spam_list[i])
+
 
 """Prepare the URL Data"""
 """a list variable to store individual url data"""
@@ -55,60 +59,81 @@ for i in range(len(url_array)):
 """Build up different datasets for filter"""
 """Malicious URL dataset"""
 all_pos_url=np.array(malicious_url[0:1500])
-"""Spam Email dataset """
-all_pos_email=np.array(spam_email[0:1500])
 
-"""All non-spam email dataset"""
-all_neg_email=np.array(neg_email[0:2000])
 """All non-malicious URL"""
 all_neg_url=np.array(neg_url[0:2000])
 
-"""All Email dataset"""
-all_email=np.concatenate((all_pos_email,all_neg_email),axis=0).astype(float)
 """All URL Dataset"""
 all_url=np.concatenate((all_pos_url,all_neg_url),axis=0)
+"""All Email Data Set"""
+test_spam_df=pd.concat([spam_df.iloc[:1500,:],spam_df[spam_df[57]==0].iloc[:2000,:]])
 
 """END OF DATA PREPARATION"""
+"""ML CLASSIFIER"""
+"""Model"""
+nb_classifier=MultinomialNB(alpha=1.0e-10)
+nb_classifier.fit(spam_df.iloc[:,:-1],spam_df.iloc[:,-1])
+probability_list=nb_classifier.predict_proba(test_spam_df.iloc[:,:-1])[:,-1]
 
-def learned_filter():
-    """CONSTRUCTING LEARNED BLOOM FILTER"""
-    """INITIAL BF"""
-    initial_bf=BF.Bloom_Filter(0.20,1500)
+def learned_filter(pct,t):
+    #Space reserve for the two bloom filters
+    """Initial Filter"""
+    initial_bf=BF.Bloom_Filter(pct,12000,1500)
     for i in range(1500):
-        initial_bf.insert(str(all_pos_url[i]))
+        initial_bf.insert(all_pos_url[i])
 
-    """ML CLASSIFIER"""
-    """Data Cleansing"""
-    training_email=all_email[(all_email[:,-2]<=4000) & (all_email[:,-3]<=1500) & (all_email[:,-4]<=200)]
-
-    """Model"""
-    nb_classifier=GaussianNB(var_smoothing=0)
-    nb_classifier.fit(all_email[:,0:-1],all_email[:,-1])
-
-    """BACK UP BF"""
-    backup_bf=BF.Bloom_Filter(0.05,1500)
-    for i in range(1500):
-        backup_bf.insert(str(all_pos_url[i]))
-
-    """Test"""
+    #run the data through initial bloom filter
     round1_pos=[]
     for i in range(len(all_url)):
         if initial_bf.search(all_url[i])==True:
             round1_pos.append(i)
-    classifier_email=all_email[round1_pos]
-    classifier_result=nb_classifier.predict(classifier_email[:,0:-1])
-    backup_bf_url=all_url[round1_pos]
-    backupBF_result=[]
-    for i in range(len(backup_bf_url[classifier_result!=1])):
-        backupBF_result.append(backup_bf.search(backup_bf_url[classifier_result!=1][i]))
-    error_rt=(3500-len(round1_pos)+(len(backupBF_result)-sum(backupBF_result)-2000))/3500
+    #calculate the error rate of initial bf: False positive/All negatives
+    initial_err=(len(round1_pos)-len(all_pos_url))/(len(all_url)-len(all_pos_url))
 
-    return error_rt
+    """Naive Bayes Classifier"""
+    # Oracle Model
+    # np.array(round1_pos[:1500]).resample(frac=0.1)
+    # c_result=np.array(classifier_email[:,-1])
+    # counter=0
+    # counter1=0
+    # for i in range (len(c_result)):
+    #     if c_result[i]==1.0 and counter<round(false_neg*len(c_result)):
+    #         c_result[i]=0.0
+    #         counter=counter+1
+    #     elif c_result[i]==0.0 and counter1<round(false_pos*len(c_result)):
+    #         c_result[i]=1.0
+    #         counter1=counter1+1
+    #using actual model prediction
+    positive_array=(probability_list[round1_pos]>=t) #the data instance that are positive from initial filter and prob of 1 is bigger than T
+    backup_filter_data=all_url[round1_pos][positive_array!=True]
+    pos_backup_filter_data=[]
+    for i in range(len(backup_filter_data)):
+        if backup_filter_data[i][0]=='+1':
+            pos_backup_filter_data.append(backup_filter_data[i])
 
+    model_miss=sum(positive_array)-sum(np.array(test_spam_df[57])[round1_pos][positive_array])
+    model_false_pos=model_miss/(len(positive_array)-sum(probability_list[round1_pos]))
+    neg_array=np.invert(positive_array)
+    neg_miss=sum(neg_array)-(len(np.array(test_spam_df[57])[round1_pos][neg_array])-sum(np.array(test_spam_df[57])[round1_pos][neg_array]))
+    model_false_neg=neg_miss/sum(probability_list[round1_pos])
 
-print(' The input data set has 3500 instances in total, with 2000 benign/non-spam instances and 1500 spam/malicious data\n',
-    'Initial Filter returns',len(round1_pos),'positives with',len(round1_pos)-1500,' false positives reported and discards', 3500-len(round1_pos),'negatives.\n',
-    'The classifier takes in',len(round1_pos),'input email data instances and predicts that',int(sum(classifier_result)),'are spam email and',len(classifier_result)-int(sum(classifier_result)),'are non-spam email.\n',
-    'The Backup Filter takes in',len(classifier_email[classifier_result==0]),'input email data instances. It predicts that',sum(backupBF_result),'instances are spam email and',len(classifier_email[classifier_result==0])-sum(backupBF_result),'are non-spam emails.\n',
-    'Thus, as a conclusion:\n',
-    'The Learned Filter predicted that there are',(3500-len(round1_pos))+(len(backupBF_result)-sum(backupBF_result)),'benign data instances and',int(sum(classifier_result))+sum(backupBF_result),'spam/malicioous data instances.')
+    """Backup Filter"""
+    backup_bf=BF.Bloom_Filter(1-pct,12000,len(pos_backup_filter_data))
+
+    for i in range(len(pos_backup_filter_data)):
+        backup_bf.insert(pos_backup_filter_data[i])
+
+    backup_bf_result=[]
+    backup_bf_truth=[]
+    for i in range(len(backup_filter_data)):
+        backup_bf_result.append(backup_bf.search(backup_filter_data[i]))
+        backup_bf_truth.append(int(backup_filter_data[i][0]))
+
+    backup_err=(sum(backup_bf_result)-len(pos_backup_filter_data))/(len(backup_filter_data)-len(pos_backup_filter_data))
+    """Total Error Rate"""
+    #initial_miss=len(round1_pos)-len(all_pos_url)
+    backup_miss=sum(backup_bf_result)-len(pos_backup_filter_data)
+    total_err=(model_miss+backup_miss)/(2000)
+    ideal_total_err=(0.6185**(initial_bf.array_size/initial_bf.length))*(model_false_pos+(1-model_false_pos)*(0.6185**((backup_bf.array_size/backup_bf.length))))
+
+    return initial_err,initial_bf.false_pos,backup_err,backup_bf.false_pos, total_err,ideal_total_err
