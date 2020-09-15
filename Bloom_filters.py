@@ -65,3 +65,4 @@ bf_test.array_size
 for line in helper.words:
     for word in line.split():
         bf_test.insert(word)
+
