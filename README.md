@@ -1,2 +1,2 @@
 # BloomFilters_Sketch
-Implementation of Bloom Filters and Sandwich Learned Bloom Filters
+Implementation of Bloom Filters, Sandwich Learned Bloom Filters, and other variations of Learned Bloom Filters
