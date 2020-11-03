@@ -1,6 +1,7 @@
 """This learned bloom filter is mainly for testing the relationship between
 % of memory each filter occupied vs. the general error rate
 """
+import math
 import numpy as np
 import Bloom_filters_test as BF
 from sklearn.naive_bayes import MultinomialNB
@@ -9,6 +10,11 @@ import pandas as pd
 import multiprocessing
 import tqdm
 import itertools
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import cross_val_score
+"""Keras"""
+from keras.models import Sequential
+from keras.layers import Dense
 """DATA PREPARATION"""
 """Check"""
 """Prepare the Spam Email Data"""
@@ -66,35 +72,69 @@ all_neg_url=np.array(neg_url[0:2000])
 """All URL Dataset"""
 all_url=np.concatenate((all_pos_url,all_neg_url),axis=0)
 """All Email Data Set"""
-test_spam_df=pd.concat([spam_df.iloc[:1500,:],spam_df[spam_df[57]==0].iloc[:2000,:]])
+test_spam_df=pd.concat([spam_df.iloc[:1500,:],spam_df[spam_df[57]==0].iloc[:2000,:]]).reset_index(drop=True)
 
 """END OF DATA PREPARATION"""
 
 """ML CLASSIFIER"""
-"""Model"""
+"""NB Classifier"""
 nb_classifier=MultinomialNB(alpha=1.0e-10)
 nb_classifier.fit(spam_df.iloc[:,:-1],spam_df.iloc[:,-1])
 probability_list=nb_classifier.predict_proba(test_spam_df.iloc[:,:-1])[:,-1]
+predicted_result=np.array(probability_list)>0.6
+model_fp=(sum(predicted_result[1500:]))/sum(test_spam_df.iloc[:,-1]==0)
+model_fn=(1500-sum(predicted_result[:1500]))/1500
+model_fp
+model_fn
+
+"""Neural Network Classifier"""
+mlp_classifier=MLPClassifier(random_state=1,early_stopping=True,alpha=0.0010,activation='tanh')
+mlp_classifier.fit(spam_df.iloc[:,:-1],spam_df.iloc[:,-1])
+mlp_classifier.score(spam_df.iloc[:,:-1],spam_df.iloc[:,-1])
+np.mean(cross_val_score(mlp_classifier,spam_df.iloc[:,:-1],spam_df.iloc[:,-1],cv=10))
+mlp_prob=mlp_classifier.predict_proba(test_spam_df.iloc[:,:-1])[:,-1]
+mlp_result=np.array(mlp_prob)>0.6
+fp=(sum(mlp_result[1500:])/sum(test_spam_df.iloc[:,-1]==0))
+fn=(1500-sum(mlp_result[:1500]))/1500
+fp
+fn
+
+"""Neural Network Using Keras"""
+model=Sequential()
+model.add(Dense(57,input_dim=57,activation='relu'))
+model.add(Dense(29,activation='relu'))
+model.add(Dense(1,activation='sigmoid'))
+model.compile(loss='mean_squared_logarithmic_error',optimizer='adam',metrics=['accuracy'])
+model.fit(spam_df.iloc[:,:-1],spam_df.iloc[:,-1],epochs=150,batch_size=64)
+nn_prob=model.predict(test_spam_df.iloc[:,:-1]).flatten()
+nn_result=np.array(nn_prob)>0.6
+fp=(sum(nn_result[1500:])/sum(test_spam_df.iloc[:,-1]==0))
+fn=(1500-sum(nn_result[:1500]))/1500
+fp
 
 #Run to show model error rate with different threshold
 # err_array=[]
 # for i in np.arange(0.1,1.0,0.01):
-#     model_result=(probability_list>=i)
-#     model_err=sum(np.not_equal(model_result,np.array(test_spam_df.iloc[:,-1])))/len(spam_df.iloc[:,-1])
+#     model_result=(mlp_prob>=i)
+#     model_err=(sum(model_result[1500:])/sum(test_spam_df.iloc[:,-1]==0))
 #     err_array.append(model_err)
 #
 #
 # plt.plot(np.arange(0, len(err_array)),err_array)
 # plt.xlabel('Threshold Value')
-# plt.ylabel('Model Error Rate')
-# plt.title('Model Independent Error Rate vs Threshold Value')
+# plt.ylabel('Fp')
+# plt.title('Model Fp vs Threshold Value')
 # plt.show()
 
 
-def learned_filter(m1,m2,t):
+
+
+
+
+def learned_filter(model_ouput,mem,backup,t):
     #Space reserve for the two bloom filters
     """Initial Filter"""
-    initial_bf=BF.Bloom_Filter(m1,len(all_pos_url))
+    initial_bf=BF.Bloom_Filter(mem-backup,len(all_pos_url))
     for i in range(len(all_pos_url)):
         initial_bf.insert(all_pos_url[i])
 
@@ -106,7 +146,7 @@ def learned_filter(m1,m2,t):
     #calculate the error rate of initial bf: False positive/All negatives
     initial_err=(len(round1_pos)-len(all_pos_url))/(len(all_url)-len(all_pos_url))
 
-    """Naive Bayes Classifier"""
+    """Classifier"""
     # Oracle Model
     # np.array(round1_pos[:1500]).resample(frac=0.1)
     # c_result=np.array(classifier_email[:,-1])
@@ -120,7 +160,7 @@ def learned_filter(m1,m2,t):
     #         c_result[i]=1.0
     #         counter1=counter1+1
     #using actual model prediction
-    positive_array=(probability_list[round1_pos]>=t) #the data instance that are positive from initial filter and prob of 1 is bigger than T
+    positive_array=(model_ouput[round1_pos]>=t) #the data instance that are positive from initial filter and prob of 1 is bigger than T
     backup_filter_data=all_url[round1_pos][positive_array!=True]
     pos_backup_filter_data=[]
     for i in range(len(backup_filter_data)):
@@ -128,17 +168,16 @@ def learned_filter(m1,m2,t):
             pos_backup_filter_data.append(backup_filter_data[i])
 
     model_miss=sum(positive_array)-sum(np.array(test_spam_df[57])[round1_pos][positive_array])
-    model_false_pos=model_miss/(len(positive_array)-sum(probability_list[round1_pos]))
+    model_false_pos=model_miss/(len(positive_array)-sum(positive_array))
     neg_array=np.invert(positive_array)
     neg_miss=sum(neg_array)-(len(np.array(test_spam_df[57])[round1_pos][neg_array])-sum(np.array(test_spam_df[57])[round1_pos][neg_array]))
-    model_false_neg=neg_miss/sum(probability_list[round1_pos])
+    model_false_neg=neg_miss/sum(model_ouput[round1_pos])
 
     """Backup Filter"""
-    backup_bf=BF.Bloom_Filter(m2,len(pos_backup_filter_data))
+    backup_bf=BF.Bloom_Filter(backup,len(pos_backup_filter_data))
 
     for i in range(len(pos_backup_filter_data)):
         backup_bf.insert(pos_backup_filter_data[i])
-
     backup_bf_result=[]
     backup_bf_truth=[]
     for i in range(len(backup_filter_data)):
@@ -146,55 +185,34 @@ def learned_filter(m1,m2,t):
         backup_bf_truth.append(int(backup_filter_data[i][0]))
 
     backup_err=(sum(backup_bf_result)-len(pos_backup_filter_data))/(len(backup_filter_data)-len(pos_backup_filter_data))
+
     """Total Error Rate"""
     #initial_miss=len(round1_pos)-len(all_pos_url)
     backup_miss=sum(backup_bf_result)-len(pos_backup_filter_data)
     total_err=(model_miss+backup_miss)/(2000)
+    #=============================================================================
+    #0.6185 is calculated based on false pos rate=p^k=p^(ln2*(m/2)) where p is % of bits that are 0 after hashed and when p=0.5, p^ln2=0.6185
+    #
     ideal_total_err=(0.6185**(initial_bf.array_size/initial_bf.length))*(model_false_pos+(1-model_false_pos)*(0.6185**((backup_bf.array_size/backup_bf.length))))
 
-    return initial_err,initial_bf.false_pos,backup_err,backup_bf.false_pos, total_err,ideal_total_err
+    return total_err#backup_bf.false_pos,initial_err,initial_bf.false_pos,backup_err,backup_bf.false_pos, total_err,ideal_total_err
 
-learned_filter(8000,1000,0.6)
+learned_filter(nn_prob,12000,3000,0.98)
 
+def experiment(mem):
+    error=[]
+    k=np.arange(500,mem,500)
+    for i in k:
+        error.append(learned_filter(mlp_prob,mem,i,0.6))
+    return error
 
-initial_err_array=[]
-ideal_initial_err_array=[]
-backup_err_array=[]
-ideal_backup_err_array=[]
-total_err_array=[]
-ideal_total_err_array=[]
+if __name__ == "__main__" :
+     p=multiprocessing.Pool(processes=6)
+     total_error=p.map(experiment,[i for i in np.arange(8000,18000,2000)])
+     p.close()
 
-for i in range(8000,18000,2000):
-    total_err=[]
-    for j in np.arange(0.1,1.0,0.02):
-        temp_initial=[]
-        temp_ideal_initial=[]
-        temp_backup=[]
-        temp_ideal_backup=[]
-        temp_total=[]
-        temp_ideal_total=[]
-        for n in range(10):
-            temp1,temp2,temp3,temp4,temp5,temp6=learned_filter(i,0.6)
-            temp_initial.append(temp1)
-            temp_ideal_initial.append(temp2)
-            temp_backup.append(temp3)
-            temp_ideal_backup.append(temp4)
-            temp_total.append(temp1)
-            temp_ideal_total.append(temp6)
-        initial_err_array.append(np.median(np.array(temp_initial)))
-        ideal_initial_err_array.append(np.median(np.array(temp_ideal_initial)))
-        backup_err_array.append(np.median(np.array(temp_backup)))
-        ideal_backup_err_array.append(np.median(np.array(temp_ideal_backup)))
-        total_err.append(np.median(np.array(temp_total)))
-        ideal_total_err_array.append(np.median(np.array(temp_ideal_total)))
-    total_err_array.append(total_err)
+total_error=np.array(total_error)
 
-initial_err_array=np.array(initial_err_array)
-ideal_initial_err_array=np.array(ideal_initial_err_array)
-backup_err_array=np.array(backup_err_array)
-ideal_backup_err_array=np.array(ideal_backup_err_array)
-total_err_array=np.array(total_err_array)
-ideal_total_err_array=np.array(ideal_total_err_array)
 
 #======================================================
 """For Multi subplots"""
@@ -218,15 +236,20 @@ ax3.set_ylabel('Error Rate')
 ax3.legend()
 plt.savefig('result1.pdf')
 plt.show()
-1`#=================================================================
+#=================================================================
 """For multi lines plots"""
+mem=np.arange(8000,18000,2000)
 fig, ax = plt.subplots()
+for i in range(len(total_error)):
+    ax.plot(np.arange(500,mem[i],500),total_error[i], linestyle='dotted', ms=15, label='Memory Size: '+str(np.arange(8000,18000,2000)[i]))
+    min_index=np.argmin(total_error[i])
+    ax.plot(np.arange(500,mem[i],500)[min_index],total_error[i][min_index],marker="v",color="black")
 
-for i in range(len(total_err_array)):
-    ax.plot(memory_array[i],total_err_array[i], linestyle='dotted', ms=15, label='Memory Size: '+str(np.arange(8000,18000,2000)[i]))
-
-#ax.plot(np.arange(0,1.0,0.01),backup_err_array, linestyle='solid', ms=15, label='Back Up Filter Error Rate')
-#ax.plot(np.arange(0,1.0,0.01),total_err_array, linestyle='dashdot', ms=15, label='Total Error Rate')
+loc=(math.log(np.average(fp)/((1-np.average(fp))*((1/np.average(fn))-1)))/math.log(0.6185))
+ax.vlines(200*loc,ymin=0,ymax=0.02)
+loc
+# ax.plot(np.arange(1.0,0.1,-0.01),ideal_backup_err_array, linestyle='solid', ms=15, label='Back Up Filter Error Rate')
+# ax.plot(np.arange(0.1,1.0,0.01),model_error_array, linestyle='dashdot', ms=15, label='Model Error Rate')
 #ax.plot(np.arange(0,1.0,0.01),err_result_array, linestyle='dashdot', ms=15, label='Initial Filter Error Rate')
 # ax.set_xlabel('Threshold Value')
 # ax.set_ylabel('Model Error Rate')
@@ -270,3 +293,4 @@ plt.title('% of Memory for Initial BF from 0.1 to 1.0 with Interval 0.01 with 12
 plt.legend(loc=1,fontsize=6)
 plt.savefig('rouhded_result.pdf')
 plt.show()
+
