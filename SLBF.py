@@ -32,17 +32,14 @@ class SLBF:
 
         self.initial=initial_bf
 
-        """Classifier"""
-        interpreter = tf.lite.Interpreter(model_content=model)
-        interpreter.allocate_tensors()
-        self.model=interpreter
-        self.threshold=threshold
 
-        positive_array=[]
-        for i in round1_pos:
-            interpreter.set_tensor(interpreter.get_input_details()[0]['index'],np.array(model_dataset.iloc[i,:-1]).astype(np.float32).reshape((1,model_dataset.shape[1]-1)))
-            interpreter.invoke()
-            positive_array.append(interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0][0])
+        """Classifier"""
+        self.model=model
+        self.threshold=threshold
+        round1_pos_df=model_dataset.iloc[round1_pos,:-1].astype(np.float32)#.reshape((1,model_dataset.shape[1]-1))
+
+        positive_array=self.model.Predict(round1_pos_df)
+
         #the data instance that are positive from initial filter and prob of 1 is bigger than T
         positive_array=(np.array(positive_array)>=threshold)
 
@@ -69,12 +66,14 @@ class SLBF:
         self.backup=backup_bf
 
         return
+
     def search(self,data,model_data):
 
         if self.initial.search(data):
-            self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
-            self.model.invoke()
-            if self.model.get_tensor(self.model.get_output_details()[0]['index'])[0][0]>self.threshold:
+            # self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
+            # self.model.invoke()
+            #if self.model.get_tensor(self.model.get_output_details()[0]['index'])[0][0]>self.threshold:
+            if self.model.Predict(model_data[:-1])>self.threshold:
                 return True
             else:
                 if self.backup.search(data):
