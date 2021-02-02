@@ -50,16 +50,19 @@ class ALBF:
         round1_pos_df=dataset.iloc[round1_pos,:]
 
         """Classifier"""
-        interpreter = tf.lite.Interpreter(model_content=model)
-        interpreter.allocate_tensors()
-        self.model=interpreter
-
-        model_output=[]
-        for i in round1_pos:
-            interpreter.set_tensor(interpreter.get_input_details()[0]['index'],np.array(model_dataset.iloc[i,:-1]).astype(np.float32).reshape((1,model_dataset.shape[1]-1)))
-            interpreter.invoke()
-            model_output.append(interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0][0])
-
+        self.model=model
+        #self.threshold=threshold
+        round1_pos_df=model_dataset.iloc[round1_pos,:].astype(np.float32)#.reshape((1,model_dataset.shape[1]-1))
+        # interpreter = tf.lite.Interpreter(model_content=model)
+        # interpreter.allocate_tensors()
+        # self.model=interpreter
+        #
+        # model_output=[]
+        # for i in round1_pos:
+        #     interpreter.set_tensor(interpreter.get_input_details()[0]['index'],np.array(model_dataset.iloc[i,:-1]).astype(np.float32).reshape((1,model_dataset.shape[1]-1)))
+        #     interpreter.invoke()
+        #     model_output.append(interpreter.get_tensor(interpreter.get_output_details()[0]['index'])[0][0])
+        model_output=self.model.Predict(model_dataset.iloc[round1_pos,:-1].astype(np.float32))
         round1_pos_df['Prob']=model_output
 
         round1_pos_df=round1_pos_df.sort_values(by='Prob').reset_index()
@@ -94,6 +97,7 @@ class ALBF:
         #Store the rest of dataframe that is not auotmatic postive in backup_bf_df
         backup_bf_df=round1_pos_df[round1_pos_df['Segments']!=(backup_bf.segments-1)]
 
+        #print(backup_bf_df)
         #Those backup points that are 1
         pos_backup_bf_df=backup_bf_df[backup_bf_df[label_column_name]==1]
 
@@ -116,9 +120,9 @@ class ALBF:
 
     def search(self,data,model_data):
         if self.initial=='':
-            self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
-            self.model.invoke()
-            prob=self.model.get_tensor(self.model.get_output_details()[0]['index'])[0][0]
+            # self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
+            # self.model.invoke()
+            prob=self.model.Predict(model_data[:-1])
             for i in self.cutoff:
                 if prob>i:
                     segment=self.cutoff[i]
@@ -131,9 +135,9 @@ class ALBF:
                             return False
         else:
             if self.initial.search(data):
-                self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
-                self.model.invoke()
-                prob=self.model.get_tensor(self.model.get_output_details()[0]['index'])[0][0]
+                # self.model.set_tensor(self.model.get_input_details()[0]['index'],np.array(model_data[:-1]).astype(np.float32).reshape((1,len(model_data)-1)))
+                # self.model.invoke()
+                prob=self.model.Predict(model_data[:-1])
                 for i in self.cutoff:
                     if prob>i:
                         segment=self.cutoff[i]
